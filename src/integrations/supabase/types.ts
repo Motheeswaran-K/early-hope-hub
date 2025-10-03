@@ -14,7 +14,147 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      health_quiz_responses: {
+        Row: {
+          created_at: string | null
+          id: string
+          quiz_data: Json
+          recommendations: string[] | null
+          risk_score: number | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          quiz_data: Json
+          recommendations?: string[] | null
+          risk_score?: number | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          quiz_data?: Json
+          recommendations?: string[] | null
+          risk_score?: number | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      predictions: {
+        Row: {
+          analysis_details: Json | null
+          confidence_score: number
+          created_at: string | null
+          id: string
+          image_path: string
+          prediction_type: string
+          user_id: string
+        }
+        Insert: {
+          analysis_details?: Json | null
+          confidence_score: number
+          created_at?: string | null
+          id?: string
+          image_path: string
+          prediction_type: string
+          user_id: string
+        }
+        Update: {
+          analysis_details?: Json | null
+          confidence_score?: number
+          created_at?: string | null
+          id?: string
+          image_path?: string
+          prediction_type?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          created_at: string | null
+          date_of_birth: string | null
+          email: string | null
+          full_name: string | null
+          id: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          date_of_birth?: string | null
+          email?: string | null
+          full_name?: string | null
+          id: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          date_of_birth?: string | null
+          email?: string | null
+          full_name?: string | null
+          id?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      reminders: {
+        Row: {
+          completed: boolean | null
+          created_at: string | null
+          id: string
+          message: string
+          reminder_date: string
+          reminder_type: string
+          user_id: string
+        }
+        Insert: {
+          completed?: boolean | null
+          created_at?: string | null
+          id?: string
+          message: string
+          reminder_date: string
+          reminder_type: string
+          user_id: string
+        }
+        Update: {
+          completed?: boolean | null
+          created_at?: string | null
+          id?: string
+          message?: string
+          reminder_date?: string
+          reminder_type?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      symptoms: {
+        Row: {
+          id: string
+          logged_at: string | null
+          notes: string | null
+          severity: string
+          symptom_name: string
+          user_id: string
+        }
+        Insert: {
+          id?: string
+          logged_at?: string | null
+          notes?: string | null
+          severity: string
+          symptom_name: string
+          user_id: string
+        }
+        Update: {
+          id?: string
+          logged_at?: string | null
+          notes?: string | null
+          severity?: string
+          symptom_name?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
