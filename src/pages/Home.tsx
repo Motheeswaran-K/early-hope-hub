@@ -1,13 +1,48 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { ArrowRight, Activity, HeartPulse, Brain } from "lucide-react";
+import { ArrowRight, Activity, HeartPulse, Brain, User } from "lucide-react";
 import { Link } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { supabase } from "@/integrations/supabase/client";
+import { Session } from "@supabase/supabase-js";
 import heroImage from "@/assets/hero-image.jpg";
 import aiDetectionIcon from "@/assets/ai-detection-icon.jpg";
 import trackingIcon from "@/assets/tracking-icon.jpg";
 import wellnessIcon from "@/assets/wellness-icon.jpg";
 
 const Home = () => {
+  const [session, setSession] = useState<Session | null>(null);
+  const [profileName, setProfileName] = useState("");
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      if (session?.user) {
+        fetchProfile(session.user.id);
+      }
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+      if (session?.user) {
+        fetchProfile(session.user.id);
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  const fetchProfile = async (userId: string) => {
+    const { data } = await supabase
+      .from("profiles")
+      .select("full_name")
+      .eq("id", userId)
+      .single();
+    
+    if (data?.full_name) {
+      setProfileName(data.full_name);
+    }
+  };
   return (
     <div className="min-h-screen">
       {/* Hero Section */}
@@ -23,6 +58,11 @@ const Home = () => {
         />
         <div className="container mx-auto px-4 py-20 relative">
           <div className="max-w-3xl mx-auto text-center space-y-6">
+            {session && profileName && (
+              <p className="text-lg text-primary font-semibold">
+                Welcome back, {profileName}!
+              </p>
+            )}
             <h1 className="text-5xl md:text-6xl font-bold tracking-tight">
               AI-Powered{" "}
               <span className="bg-gradient-to-r from-primary via-secondary to-accent bg-clip-text text-transparent">
@@ -35,15 +75,31 @@ const Home = () => {
               track your health, and access personalized support resources.
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center pt-4">
-              <Button size="lg" asChild className="bg-gradient-to-r from-primary to-primary-glow">
-                <Link to="/upload">
-                  Start Detection
-                  <ArrowRight className="ml-2 h-5 w-5" />
-                </Link>
-              </Button>
-              <Button size="lg" variant="outline" asChild>
-                <Link to="/faq">Learn More</Link>
-              </Button>
+              {session ? (
+                <>
+                  <Button size="lg" asChild className="bg-gradient-to-r from-primary to-primary-glow">
+                    <Link to="/upload">
+                      Start Detection
+                      <ArrowRight className="ml-2 h-5 w-5" />
+                    </Link>
+                  </Button>
+                  <Button size="lg" variant="outline" asChild>
+                    <Link to="/tracker">View Tracker</Link>
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <Button size="lg" asChild className="bg-gradient-to-r from-primary to-primary-glow">
+                    <Link to="/auth">
+                      <User className="mr-2 h-5 w-5" />
+                      Get Started
+                    </Link>
+                  </Button>
+                  <Button size="lg" variant="outline" asChild>
+                    <Link to="/faq">Learn More</Link>
+                  </Button>
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -149,10 +205,17 @@ const Home = () => {
             </CardHeader>
             <CardContent className="flex justify-center">
               <Button size="lg" asChild className="bg-gradient-to-r from-primary to-secondary">
-                <Link to="/upload">
-                  Upload Image for Analysis
-                  <ArrowRight className="ml-2 h-5 w-5" />
-                </Link>
+                {session ? (
+                  <Link to="/upload">
+                    Upload Image for Analysis
+                    <ArrowRight className="ml-2 h-5 w-5" />
+                  </Link>
+                ) : (
+                  <Link to="/auth">
+                    Sign In to Get Started
+                    <ArrowRight className="ml-2 h-5 w-5" />
+                  </Link>
+                )}
               </Button>
             </CardContent>
           </Card>

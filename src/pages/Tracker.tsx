@@ -1,53 +1,128 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Plus, Calendar, TrendingUp } from "lucide-react";
+import { Plus, Calendar, TrendingUp, Trash2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
+import { z } from "zod";
+
+const symptomSchema = z.object({
+  symptom_name: z.string().trim().min(1, "Symptom is required").max(100),
+  severity: z.enum(["mild", "moderate", "severe"]),
+  notes: z.string().trim().max(500).optional(),
+});
 
 interface Symptom {
   id: string;
-  date: string;
-  symptom: string;
+  symptom_name: string;
   severity: string;
-  notes: string;
+  notes: string | null;
+  logged_at: string;
 }
 
-const Tracker = () => {
+const TrackerAuth = () => {
   const [symptoms, setSymptoms] = useState<Symptom[]>([]);
   const [newSymptom, setNewSymptom] = useState("");
   const [severity, setSeverity] = useState("mild");
   const [notes, setNotes] = useState("");
+  const [loading, setLoading] = useState(true);
   const { toast } = useToast();
 
-  const handleAddSymptom = () => {
-    if (!newSymptom.trim()) {
+  useEffect(() => {
+    fetchSymptoms();
+  }, []);
+
+  const fetchSymptoms = async () => {
+    try {
+      const { data, error } = await supabase
+        .from("symptoms")
+        .select("*")
+        .order("logged_at", { ascending: false });
+
+      if (error) throw error;
+      setSymptoms(data || []);
+    } catch (error: any) {
       toast({
         title: "Error",
-        description: "Please enter a symptom",
+        description: "Failed to load symptoms",
         variant: "destructive",
       });
-      return;
+    } finally {
+      setLoading(false);
     }
+  };
 
-    const symptom: Symptom = {
-      id: Date.now().toString(),
-      date: new Date().toLocaleDateString(),
-      symptom: newSymptom,
-      severity,
-      notes,
-    };
+  const handleAddSymptom = async () => {
+    try {
+      const validation = symptomSchema.safeParse({
+        symptom_name: newSymptom,
+        severity,
+        notes: notes || undefined,
+      });
 
-    setSymptoms([symptom, ...symptoms]);
-    setNewSymptom("");
-    setNotes("");
-    setSeverity("mild");
+      if (!validation.success) {
+        toast({
+          title: "Validation Error",
+          description: validation.error.issues[0].message,
+          variant: "destructive",
+        });
+        return;
+      }
 
-    toast({
-      title: "Symptom Added",
-      description: "Your symptom has been tracked successfully",
-    });
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        toast({
+          title: "Error",
+          description: "You must be logged in",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      const { error } = await supabase.from("symptoms").insert({
+        user_id: user.id,
+        ...validation.data,
+      });
+
+      if (error) throw error;
+
+      setNewSymptom("");
+      setNotes("");
+      setSeverity("mild");
+      await fetchSymptoms();
+
+      toast({
+        title: "Symptom Added",
+        description: "Your symptom has been tracked successfully",
+      });
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to add symptom",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleDeleteSymptom = async (id: string) => {
+    try {
+      const { error } = await supabase.from("symptoms").delete().eq("id", id);
+      if (error) throw error;
+
+      await fetchSymptoms();
+      toast({
+        title: "Symptom Deleted",
+        description: "Symptom has been removed",
+      });
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: "Failed to delete symptom",
+        variant: "destructive",
+      });
+    }
   };
 
   return (
@@ -79,6 +154,7 @@ const Tracker = () => {
                   placeholder="e.g., Pain, Discomfort, Swelling"
                   value={newSymptom}
                   onChange={(e) => setNewSymptom(e.target.value)}
+                  maxLength={100}
                 />
               </div>
 
@@ -102,6 +178,7 @@ const Tracker = () => {
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
                   rows={3}
+                  maxLength={500}
                 />
               </div>
 
@@ -165,7 +242,11 @@ const Tracker = () => {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            {symptoms.length === 0 ? (
+            {loading ? (
+              <div className="text-center py-12">
+                <p className="text-muted-foreground">Loading...</p>
+              </div>
+            ) : symptoms.length === 0 ? (
               <div className="text-center py-12">
                 <Calendar className="h-16 w-16 mx-auto mb-4 text-muted-foreground opacity-50" />
                 <p className="text-muted-foreground">
@@ -180,21 +261,32 @@ const Tracker = () => {
                     className="p-4 rounded-lg border bg-card hover:shadow-md transition-shadow"
                   >
                     <div className="flex items-start justify-between mb-2">
-                      <div>
-                        <p className="font-medium">{symptom.symptom}</p>
-                        <p className="text-sm text-muted-foreground">{symptom.date}</p>
+                      <div className="flex-1">
+                        <p className="font-medium">{symptom.symptom_name}</p>
+                        <p className="text-sm text-muted-foreground">
+                          {new Date(symptom.logged_at).toLocaleDateString()}
+                        </p>
                       </div>
-                      <span
-                        className={`px-2 py-1 rounded-full text-xs font-medium ${
-                          symptom.severity === "severe"
-                            ? "bg-destructive/10 text-destructive"
-                            : symptom.severity === "moderate"
-                            ? "bg-accent/10 text-accent"
-                            : "bg-primary/10 text-primary"
-                        }`}
-                      >
-                        {symptom.severity}
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <span
+                          className={`px-2 py-1 rounded-full text-xs font-medium ${
+                            symptom.severity === "severe"
+                              ? "bg-destructive/10 text-destructive"
+                              : symptom.severity === "moderate"
+                              ? "bg-accent/10 text-accent"
+                              : "bg-primary/10 text-primary"
+                          }`}
+                        >
+                          {symptom.severity}
+                        </span>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleDeleteSymptom(symptom.id)}
+                        >
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </div>
                     </div>
                     {symptom.notes && (
                       <p className="text-sm text-muted-foreground">{symptom.notes}</p>
@@ -210,4 +302,4 @@ const Tracker = () => {
   );
 };
 
-export default Tracker;
+export default TrackerAuth;

@@ -1,14 +1,18 @@
 import { useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Upload as UploadIcon, Image as ImageIcon, AlertCircle } from "lucide-react";
+import { Upload as UploadIcon, Image as ImageIcon, AlertCircle, CheckCircle, AlertTriangle } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
+import { Progress } from "@/components/ui/progress";
 
-const Upload = () => {
+const UploadAuth = () => {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [result, setResult] = useState<any>(null);
   const { toast } = useToast();
 
   const handleFileSelect = (file: File) => {
@@ -21,7 +25,17 @@ const Upload = () => {
       return;
     }
 
+    if (file.size > 10485760) {
+      toast({
+        title: "File too large",
+        description: "Please upload an image smaller than 10MB",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setSelectedFile(file);
+    setResult(null);
     const reader = new FileReader();
     reader.onloadend = () => {
       setPreview(reader.result as string);
@@ -36,19 +50,80 @@ const Upload = () => {
     if (file) handleFileSelect(file);
   };
 
-  const handleAnalyze = () => {
-    toast({
-      title: "Analysis Started",
-      description: "Your image is being analyzed. This may take a moment...",
-    });
-    
-    // Simulate analysis - in real implementation, this would call Lovable AI
-    setTimeout(() => {
+  const handleAnalyze = async () => {
+    if (!selectedFile || !preview) return;
+
+    setAnalyzing(true);
+    setResult(null);
+
+    try {
+      // Get current user session
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        toast({
+          title: "Authentication Required",
+          description: "Please sign in to analyze images",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      // Upload image to storage
+      const fileName = `${session.user.id}/${Date.now()}-${selectedFile.name}`;
+      const { error: uploadError } = await supabase.storage
+        .from("medical-images")
+        .upload(fileName, selectedFile);
+
+      if (uploadError) throw uploadError;
+
+      // Call AI analysis edge function
+      const { data, error } = await supabase.functions.invoke("analyze-image", {
+        body: {
+          imageBase64: preview,
+          imagePath: fileName,
+        },
+      });
+
+      if (error) throw error;
+
+      setResult(data);
+      
       toast({
         title: "Analysis Complete",
-        description: "Results are ready. Backend integration coming soon!",
+        description: `Prediction: ${data.prediction.toUpperCase()} (${data.confidence}% confidence)`,
       });
-    }, 2000);
+    } catch (error: any) {
+      console.error("Analysis error:", error);
+      toast({
+        title: "Analysis Failed",
+        description: error.message || "An error occurred during analysis",
+        variant: "destructive",
+      });
+    } finally {
+      setAnalyzing(false);
+    }
+  };
+
+  const getPredictionColor = (type: string) => {
+    switch (type) {
+      case "benign":
+        return "text-primary";
+      case "malignant":
+        return "text-destructive";
+      default:
+        return "text-secondary";
+    }
+  };
+
+  const getPredictionIcon = (type: string) => {
+    switch (type) {
+      case "benign":
+        return <CheckCircle className="h-6 w-6 text-primary" />;
+      case "malignant":
+        return <AlertTriangle className="h-6 w-6 text-destructive" />;
+      default:
+        return <AlertCircle className="h-6 w-6 text-secondary" />;
+    }
   };
 
   return (
@@ -64,8 +139,7 @@ const Upload = () => {
         <Alert className="mb-8 border-accent/50 bg-accent/5">
           <AlertCircle className="h-4 w-4 text-accent" />
           <AlertDescription>
-            This is a demonstration interface. For actual medical diagnosis, please consult with healthcare professionals.
-            AI integration will be added in the next phase.
+            This is an AI-assisted tool for educational purposes. Always consult healthcare professionals for medical diagnosis.
           </AlertDescription>
         </Alert>
 
@@ -96,7 +170,7 @@ const Upload = () => {
                   Drop your image here or click to browse
                 </p>
                 <p className="text-sm text-muted-foreground mb-4">
-                  Supports JPG, PNG, and other image formats
+                  Supports JPG, PNG, and other image formats (Max 10MB)
                 </p>
                 <input
                   type="file"
@@ -130,47 +204,82 @@ const Upload = () => {
                     onClick={() => {
                       setSelectedFile(null);
                       setPreview(null);
+                      setResult(null);
                     }}
                     className="flex-1"
+                    disabled={analyzing}
                   >
                     Remove Image
                   </Button>
                   <Button
                     onClick={handleAnalyze}
                     className="flex-1 bg-gradient-to-r from-primary to-secondary"
+                    disabled={analyzing}
                   >
-                    Analyze Image
+                    {analyzing ? "Analyzing..." : "Analyze Image"}
                   </Button>
                 </div>
+                
+                {analyzing && (
+                  <div className="space-y-2">
+                    <Progress value={undefined} className="w-full" />
+                    <p className="text-sm text-center text-muted-foreground">
+                      AI is analyzing your image...
+                    </p>
+                  </div>
+                )}
               </div>
             )}
 
-            {/* Results Placeholder */}
-            {selectedFile && (
-              <Card className="bg-muted/50">
+            {/* Results Display */}
+            {result && (
+              <Card className="bg-gradient-to-br from-primary/5 to-secondary/5 border-2">
                 <CardHeader>
-                  <CardTitle className="text-lg">Analysis Results</CardTitle>
-                  <CardDescription>
-                    AI-powered prediction with confidence scores will appear here
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-4">
-                    <div className="p-4 rounded-lg bg-card border">
-                      <p className="text-sm font-medium text-muted-foreground mb-2">
-                        Status: Ready for Analysis
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        Click "Analyze Image" to process with AI. Results will include:
-                      </p>
-                      <ul className="text-xs text-muted-foreground mt-2 space-y-1 list-disc list-inside">
-                        <li>Classification (Benign, Malignant, Normal)</li>
-                        <li>Confidence scores</li>
-                        <li>Visual explanations</li>
-                        <li>Personalized recommendations</li>
-                      </ul>
+                  <div className="flex items-center gap-3">
+                    {getPredictionIcon(result.prediction)}
+                    <div>
+                      <CardTitle className="text-lg">Analysis Results</CardTitle>
+                      <CardDescription>
+                        AI-powered prediction with confidence scores
+                      </CardDescription>
                     </div>
                   </div>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="grid md:grid-cols-2 gap-4">
+                    <div className="p-4 rounded-lg bg-card border">
+                      <p className="text-sm font-medium text-muted-foreground mb-1">
+                        Classification
+                      </p>
+                      <p className={`text-2xl font-bold capitalize ${getPredictionColor(result.prediction)}`}>
+                        {result.prediction}
+                      </p>
+                    </div>
+                    <div className="p-4 rounded-lg bg-card border">
+                      <p className="text-sm font-medium text-muted-foreground mb-1">
+                        Confidence Score
+                      </p>
+                      <p className="text-2xl font-bold text-secondary">
+                        {result.confidence}%
+                      </p>
+                    </div>
+                  </div>
+
+                  {result.analysis && (
+                    <div className="p-4 rounded-lg bg-card border">
+                      <p className="text-sm font-medium mb-2">Key Observations</p>
+                      <div className="text-sm text-muted-foreground">
+                        {result.analysis.observations || result.analysis.raw_analysis || "Analysis details available"}
+                      </div>
+                    </div>
+                  )}
+
+                  <Alert>
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertDescription>
+                      These results are AI-generated predictions. Always consult with qualified healthcare professionals for proper diagnosis and treatment.
+                    </AlertDescription>
+                  </Alert>
                 </CardContent>
               </Card>
             )}
@@ -181,4 +290,4 @@ const Upload = () => {
   );
 };
 
-export default Upload;
+export default UploadAuth;
